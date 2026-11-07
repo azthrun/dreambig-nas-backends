@@ -52,7 +52,32 @@ The caps (512 + 256 + 768 MB) are limits, not reservations: on a 2 GB NAS they o
 
 ## Security
 
-Every port is published on all NAS interfaces, protected only by passwords, in plain text (no TLS). That is fine on the trusted home LAN and over Tailscale (WireGuard-encrypted). Never forward these ports on the router. DSM's firewall may not filter ports that Container Manager publishes, so do not count on it.
+Every port is published on all NAS interfaces, protected only by passwords, in plain text (no TLS). That is fine on the trusted home LAN and over Tailscale (WireGuard-encrypted). Never forward these ports on the router. DSM's firewall may not filter ports that Container Manager publishes, so do not count on it: restrict access as in [Remote access](#remote-access-tailscale).
+
+## Remote access (Tailscale)
+
+Same approach as `dreambig-nas-mcp`: the Tailscale package on DSM, the ports published on the NAS, and no router port forwarded. Nothing is reachable from the internet; remote devices reach the services through the tailnet (WireGuard-encrypted). Below, the ports are your `POSTGRES_HOST_PORT`, `REDIS_HOST_PORT`, `RABBITMQ_HOST_PORT` and `RABBITMQ_MANAGEMENT_HOST_PORT`.
+
+1. **Tailnet and devices.** If the NAS and your devices are already on a tailnet (you use it for `dreambig-nas-mcp`), skip to step 3. Otherwise open `https://login.tailscale.com/start`, sign in with an account that has 2FA on, and install Tailscale on each device that needs the services, logging in with the same account.
+2. **NAS.** Open DSM by its LAN address (`http://<nas-ip>:5000`), not QuickConnect. **Package Center >** search `Tailscale` **> Install > Open**, log in with the same account **> Connect**.
+3. **Admin console** (`https://login.tailscale.com/admin/machines`): on the NAS row **> ⋯ > Disable key expiry**, and note the NAS's `100.x.y.z` address. **DNS** tab: make sure **MagicDNS** is on and note the **Tailnet name** (`<tailnet>.ts.net`). The NAS is then `<nas-name>.<tailnet>.ts.net`.
+4. **Access controls** (console **> Access controls > JSON editor**). Add this rule to your existing `acls` (keep rules you already have, e.g. the one for `dreambig-nas-mcp`), with `<device>` a host or tag naming each device allowed to connect, then **Save**. Allow only the ports you use; the default policy otherwise lets every device reach every port.
+
+   ```json
+   { "action": "accept", "src": ["<device>"], "dst": ["<nas>:5432", "<nas>:6379", "<nas>:5672", "<nas>:15672"] }
+   ```
+
+5. **NAS firewall.** **Control Panel > Security > Firewall** tab > tick **Enable firewall** > **Apply**. **Edit Rules** (profile `default`) > **Create**. For each of your four ports, make these rules in this order, each with **Ports: Custom > Type: Destination port(s)**, protocol TCP (you can list all four ports in one rule):
+   1. **Source IP: Specific IP > Subnet**, your LAN subnet address and mask. **Allow**.
+   2. **Source IP: Specific IP > Subnet**, IP `100.64.0.0`, mask `255.192.0.0` (the tailnet range). **Allow**.
+   3. **Source IP: All**. **Deny**.
+
+   Keep your existing DSM rules as they are. **OK**, **Apply**. Then test that the rules really filter: DSM's firewall may not filter ports that Container Manager publishes. A phone on mobile data is not a valid test (the router's NAT blocks it anyway). Temporarily change rule 1's subnet to a range your test device on the LAN is not in, **Apply**, and from that LAN device (Tailscale off) run `nc -vz -w 5 <nas-ip> 5432`: it must fail. Restore rule 1, **Apply**. If the connection succeeded, DSM's firewall is not filtering these ports: put the same three rules on the router instead.
+6. **Check** from a tailnet device on another network (e.g. a phone hotspot):
+   - `nc -vz <nas-name>.<tailnet>.ts.net 5432` (also 6379, 5672) succeeds.
+   - `http://<nas-name>.<tailnet>.ts.net:15672` shows the RabbitMQ sign-in.
+   - `nc -vz -w 5 <nas-name>.<tailnet>.ts.net 5000` times out if the policy excludes DSM.
+7. **Clients.** Use `<nas-name>.<tailnet>.ts.net` instead of `<nas-ip>` in the URLs under [Connecting](#connecting), at home and away.
 
 ## Backups
 
