@@ -22,17 +22,18 @@ The caps (512 + 256 + 768 MB) are limits, not reservations: on a 2 GB NAS they o
 
 ## Setup
 
-1. Create the data folders over SSH, not File Station: File Station folders carry Synology ACLs, which break PostgreSQL's and RabbitMQ's owner-only permissions.
-   - DSM > **Control Panel** > **Terminal & SNMP** > **Enable SSH service** > **Apply**.
-   - From the Mac: `ssh <admin-user>@<nas-ip>`, then:
+1. Create the data folders with a one-off Task Scheduler task, not File Station: File Station folders carry Synology ACLs, which break PostgreSQL's and RabbitMQ's owner-only permissions.
+   - DSM > **Control Panel > Task Scheduler > Create > Triggered Task > User-defined script**. **General**: task `backends-init`, user `root`, event **Boot-up**. **Task Settings**, script:
      ```bash
-     sudo mkdir -p /volume1/docker/dreambig-nas-backends/{postgres,redis,rabbitmq}
-     sudo /usr/syno/bin/synoacltool -del /volume1/docker/dreambig-nas-backends/postgres
-     sudo /usr/syno/bin/synoacltool -del /volume1/docker/dreambig-nas-backends/redis
-     sudo /usr/syno/bin/synoacltool -del /volume1/docker/dreambig-nas-backends/rabbitmq
+     for d in postgres redis rabbitmq; do
+       mkdir -p /volume1/docker/dreambig-nas-backends/$d
+       /usr/syno/bin/synoacltool -del /volume1/docker/dreambig-nas-backends/$d
+     done
+     ls -ld /volume1/docker/dreambig-nas-backends/*
      ```
-     `synoacltool -del` removes the ACL so normal Linux modes apply. Never open or put anything in these three folders via File Station (it adds `@eaDir`, and Redis then skips fixing `/data` ownership).
-2. Copy `compose.yaml`, the `rabbitmq` folder (with `10-nas.conf`) and your `.env` into `docker/dreambig-nas-backends`. Make `.env` from `.env.example`; replace every `<password-...>` with the output of `openssl rand -hex 24`.
+   - **OK**, select the task > **Run**, then **Action > View Result** lists the three folders. Delete the task afterwards so it does not run at every boot.
+   - `synoacltool -del` removes the ACL so normal Linux modes apply. Never open or put anything in these three folders via File Station (it adds `@eaDir`, and Redis then skips fixing `/data` ownership).
+2. Copy `compose.yaml`, the `rabbitmq-config` folder (with `10-nas.conf`) and your `.env` into `docker/dreambig-nas-backends` (File Station > **Upload**). Keep the config in `rabbitmq-config`, not in the `rabbitmq` data folder. Make `.env` from `.env.example`; replace every `<password-...>` with the output of `openssl rand -hex 24`.
 3. **Container Manager > Project > Create**: name `dreambig-nas-backends`, path `/docker/dreambig-nas-backends`, source **Use existing docker-compose.yml**. Next, skip Web Station, **Done**.
 4. **Container Manager > Container**: all three containers show **healthy** after about a minute.
 5. Check from a Mac on the LAN (replace `<nas-ip>`):

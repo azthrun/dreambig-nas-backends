@@ -96,12 +96,12 @@ services:
       TZ: ${TZ:-UTC}
     volumes:
       - ${RABBITMQ_DATA_NAS_PATH:?set RABBITMQ_DATA_NAS_PATH in .env}:/var/lib/rabbitmq
-      - ./rabbitmq/10-nas.conf:/etc/rabbitmq/conf.d/10-nas.conf:ro
+      - ./rabbitmq-config/10-nas.conf:/etc/rabbitmq/conf.d/10-nas.conf:ro
     ports:
       - "${RABBITMQ_HOST_PORT:-5672}:5672"
       # Management UI and HTTP API.
       - "${RABBITMQ_MANAGEMENT_HOST_PORT:-15672}:15672"
-    # Above the broker's 512MB in rabbitmq/10-nas.conf: the healthcheck's
+    # Above the broker's 512MB in rabbitmq-config/10-nas.conf: the healthcheck's
     # rabbitmq-diagnostics starts a second Erlang VM in the same memory limit.
     mem_limit: 768m
     healthcheck:
